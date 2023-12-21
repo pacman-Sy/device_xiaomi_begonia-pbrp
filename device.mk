@@ -33,3 +33,7 @@ TW_RECOVERY_ADDITIONAL_RELINK_LIBRARY_FILES += \
 # Fasstbood
 PRODUCT_PACKAGES += \
     fastbootd
+
+# beanpod
+PRODUCT_PACKAGES += \
+    libshim_beanpod

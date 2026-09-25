@@ -18,6 +18,10 @@ on:
         type: boolean
         default: false
 
+concurrency:
+  group: pbrp-begonia-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-22.04
@@ -63,27 +67,39 @@ jobs:
           restore-keys: |
             ccache-
 
-      - name: Initialize latest PBRP source
+      - name: Initialize PBRP build tree
         run: |
           set -euo pipefail
-          repo init --depth=1 \
+          export GIT_TERMINAL_PROMPT=0
+          echo "Initializing upstream PBRP manifest..."
+          timeout 5m repo init --depth=1 \
             -u https://github.com/PitchBlackRecoveryProject/manifest_pb.git \
             -b android-12.1
-          mkdir -p .repo/local_manifests
-          cat > .repo/local_manifests/begonia-recovery.xml <<'EOF'
-          <manifest>
-            <remote name="pacman" fetch="https://github.com/pacman-Sy" />
-            <remove-project name="android_bootable_recovery" />
-            <project path="bootable/recovery"
-                     name="android_bootable_recovery"
-                     remote="pacman"
-                     revision="android-12.1" />
-          </manifest>
-          EOF
-          repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
+          echo "Syncing upstream PBRP build tree (this can take several minutes)..."
+          sync_pid=""
+          timeout 20m repo sync -c -j4 --no-clone-bundle --no-tags &
+          sync_pid=$!
+          while kill -0 "$sync_pid" 2>/dev/null; do
+            sleep 60
+            echo "repo sync is still running (elapsed time is being watched)"
+          done
+          wait "$sync_pid"
+          echo "Upstream PBRP build tree synced."
+
+          # Sync the stock manifest first, then replace only the recovery
+          # project with the reviewed source fork. This avoids a local
+          # manifest override, which can make repo retry indefinitely.
+          rm -rf bootable/recovery
+          echo "Cloning pacman-Sy/android_bootable_recovery:android-12.1..."
+          git clone --depth=1 --branch android-12.1 \
+            https://github.com/pacman-Sy/android_bootable_recovery.git \
+            bootable/recovery
           test -f bootable/recovery/partitionmanager.cpp
-          grep -q 'BEGONIA_FBE_METADATA_GUARD\|Timed out waiting for logical partition' \
-            bootable/recovery/partitionmanager.cpp || true
+          grep -Fq 'Timed out waiting for logical partition' \
+            bootable/recovery/partitionmanager.cpp
+          grep -Fq 'Unable to mount metadata key directory; skipping metadata FBE decryption' \
+            bootable/recovery/partitionmanager.cpp
+          echo "Recovery source: $(git -C bootable/recovery rev-parse HEAD)"
 
       - name: Copy begonia device tree
         run: |

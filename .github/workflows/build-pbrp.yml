@@ -31,6 +31,7 @@ jobs:
       LC_ALL: C
       PBRP_VARIANT: ${{ inputs.variant || 'safe' }}
       PBRP_ENABLE_CRYPTO: ${{ inputs.crypto && 'true' || 'false' }}
+      BUILD_ROOT: ${{ github.workspace }}/pbrp-build
     steps:
       - name: Checkout begonia device tree
         uses: actions/checkout@v4
@@ -71,7 +72,10 @@ jobs:
         run: |
           set -euo pipefail
           export GIT_TERMINAL_PROMPT=0
-          echo "Initializing upstream PBRP manifest..."
+          rm -rf "$BUILD_ROOT"
+          mkdir -p "$BUILD_ROOT"
+          cd "$BUILD_ROOT"
+          echo "Initializing upstream PBRP manifest in $BUILD_ROOT..."
           timeout 5m repo init --depth=1 \
             -u https://github.com/PitchBlackRecoveryProject/manifest_pb.git \
             -b android-12.1
@@ -104,10 +108,15 @@ jobs:
       - name: Copy begonia device tree
         run: |
           set -euo pipefail
-          rm -rf device/xiaomi/begonia
-          mkdir -p device/xiaomi
-          rsync -a --exclude='.git' --exclude='.github' ./ device/xiaomi/begonia/
-          test -f device/xiaomi/begonia/BoardConfig.mk
+          rm -rf "$BUILD_ROOT/device/xiaomi/begonia"
+          mkdir -p "$BUILD_ROOT/device/xiaomi"
+          rsync -a \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='pbrp-build' \
+            "$GITHUB_WORKSPACE/" \
+            "$BUILD_ROOT/device/xiaomi/begonia/"
+          test -f "$BUILD_ROOT/device/xiaomi/begonia/BoardConfig.mk"
 
       - name: Select recovery fstab
         id: fstab
@@ -123,7 +132,7 @@ jobs:
             echo "::error::crypto builds require static or dynamic"
             exit 1
           fi
-          test -f "variants/recovery.fstab.$VARIANT"
+          test -f "$GITHUB_WORKSPACE/variants/recovery.fstab.$VARIANT"
           echo "variant=$VARIANT" >> "$GITHUB_OUTPUT"
           echo "crypto=$CRYPTO" >> "$GITHUB_OUTPUT"
 
@@ -131,16 +140,18 @@ jobs:
         run: |
           set -euo pipefail
           VARIANT="${{ steps.fstab.outputs.variant }}"
-          cp "variants/recovery.fstab.$VARIANT" \
-            device/xiaomi/begonia/recovery/root/system/etc/recovery.fstab
+          cp "$GITHUB_WORKSPACE/variants/recovery.fstab.$VARIANT" \
+            "$BUILD_ROOT/device/xiaomi/begonia/recovery/root/system/etc/recovery.fstab"
 
       - name: Setup build
         run: |
+          cd "$BUILD_ROOT"
           source build/envsetup.sh
           lunch pb_begonia-eng
 
       - name: Build recovery image
         run: |
+          cd "$BUILD_ROOT"
           source build/envsetup.sh
           lunch pb_begonia-eng
           mka recoveryimage
@@ -149,22 +160,24 @@ jobs:
         if: success()
         run: |
           set -euo pipefail
-          OUT_DIR=out/target/product/begonia
+          cd "$BUILD_ROOT"
+          OUT_DIR="$BUILD_ROOT/out/target/product/begonia"
           RECOVERY_IMG="$OUT_DIR/recovery.img"
           VARIANT="${PBRP_VARIANT:-safe}"
           CRYPTO_LABEL=nocrypto
           [ "${PBRP_ENABLE_CRYPTO:-false}" = true ] && CRYPTO_LABEL=crypto
           test -f "$RECOVERY_IMG"
-          mkdir -p flashable_zip/META-INF/com/google/android
-          cp "$RECOVERY_IMG" flashable_zip/
-          echo 'ui_print("Installing PBRP recovery...");' > flashable_zip/META-INF/com/google/android/updater-script
-          echo 'package_extract_file("recovery.img", "/dev/block/bootdevice/by-name/recovery");' >> flashable_zip/META-INF/com/google/android/updater-script
-          echo 'ui_print("Done!");' >> flashable_zip/META-INF/com/google/android/updater-script
-          printf '#!/system/bin/sh\n' > flashable_zip/META-INF/com/google/android/update-binary
-          chmod +x flashable_zip/META-INF/com/google/android/update-binary
+          rm -rf "$BUILD_ROOT/flashable_zip"
+          mkdir -p "$BUILD_ROOT/flashable_zip/META-INF/com/google/android"
+          cp "$RECOVERY_IMG" "$BUILD_ROOT/flashable_zip/"
+          echo 'ui_print("Installing PBRP recovery...");' > "$BUILD_ROOT/flashable_zip/META-INF/com/google/android/updater-script"
+          echo 'package_extract_file("recovery.img", "/dev/block/bootdevice/by-name/recovery");' >> "$BUILD_ROOT/flashable_zip/META-INF/com/google/android/updater-script"
+          echo 'ui_print("Done!");' >> "$BUILD_ROOT/flashable_zip/META-INF/com/google/android/updater-script"
+          printf '#!/system/bin/sh\n' > "$BUILD_ROOT/flashable_zip/META-INF/com/google/android/update-binary"
+          chmod +x "$BUILD_ROOT/flashable_zip/META-INF/com/google/android/update-binary"
           ZIP_NAME="PBRP-begonia-${VARIANT}-${CRYPTO_LABEL}.zip"
-          (cd flashable_zip && zip -r "../$ZIP_NAME" .)
-          mv "$ZIP_NAME" "$OUT_DIR/"
+          (cd "$BUILD_ROOT/flashable_zip" && zip -r "$BUILD_ROOT/$ZIP_NAME" .)
+          mv "$BUILD_ROOT/$ZIP_NAME" "$OUT_DIR/"
 
       - name: Write build info
         if: success()
@@ -176,8 +189,8 @@ jobs:
             echo "variant: ${PBRP_VARIANT:-safe}"
             echo "crypto: ${PBRP_ENABLE_CRYPTO:-false}"
             echo "date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          } > out/target/product/begonia/BUILD_INFO.txt
-          cat out/target/product/begonia/BUILD_INFO.txt
+          } > "$BUILD_ROOT/out/target/product/begonia/BUILD_INFO.txt"
+          cat "$BUILD_ROOT/out/target/product/begonia/BUILD_INFO.txt"
 
       - name: Upload artifacts
         if: success()
@@ -185,8 +198,8 @@ jobs:
         with:
           name: PBRP-begonia-${{ steps.fstab.outputs.variant }}-${{ env.PBRP_ENABLE_CRYPTO == 'true' && 'crypto' || 'nocrypto' }}
           path: |
-            out/target/product/begonia/recovery.img
-            out/target/product/begonia/PBRP-begonia-*.zip
-            out/target/product/begonia/BUILD_INFO.txt
+            pbrp-build/out/target/product/begonia/recovery.img
+            pbrp-build/out/target/product/begonia/PBRP-begonia-*.zip
+            pbrp-build/out/target/product/begonia/BUILD_INFO.txt
           if-no-files-found: error
           retention-days: 30

@@ -7,6 +7,11 @@
 
 DEVICE_PATH := device/xiaomi/begonia
 
+# Safe mode is the default. The vendor MicroTrust FBE path is opt-in because
+# it runs synchronously while the PBRP splash is still visible.
+PBRP_ENABLE_CRYPTO ?= false
+PBRP_VARIANT ?= safe
+
 # For building with minimal manifest
 ALLOW_MISSING_DEPENDENCIES := true
 BUILD_BROKEN_DUP_RULES := true
@@ -56,6 +61,9 @@ TARGET_USES_MKE2FS := true
 
 # Kernel
 BOARD_KERNEL_CMDLINE := bootopt=64S3,32N2,64N2 androidboot.selinux=permissive androidboot.usbconfigfs=true androidboot.init_fatal_reboot_target=bootloader
+ifeq ($(PBRP_VARIANT),dynamic)
+    BOARD_KERNEL_CMDLINE += androidboot.super_partition=system
+endif
 TARGET_PREBUILT_KERNEL := $(DEVICE_PATH)/prebuilt/Image.gz
 BOARD_PREBUILT_DTBIMAGE_DIR := $(DEVICE_PATH)/prebuilt/dtb
 BOARD_PREBUILT_DTBOIMAGE := $(DEVICE_PATH)/prebuilt/dtbo.img
@@ -83,9 +91,23 @@ PRODUCT_COPY_FILES += \
 # Platform
 TARGET_BOARD_PLATFORM := mt6785
 
-# Properties
+# Properties / encryption
 TARGET_SYSTEM_PROP += $(DEVICE_PATH)/system.prop
-TARGET_VENDOR_PROP += $(DEVICE_PATH)/vendor.prop
+ifeq ($(PBRP_ENABLE_CRYPTO),true)
+    TARGET_VENDOR_PROP += $(DEVICE_PATH)/vendor.prop
+    TARGET_SYSTEM_PROP += $(DEVICE_PATH)/crypto.prop
+    TW_INCLUDE_CRYPTO := true
+    TW_INCLUDE_CRYPTO_FBE := true
+    TW_INCLUDE_FBE_METADATA_DECRYPT := true
+    TW_USE_FSCRYPT_POLICY := 1
+else
+    # PBRP's Android.mk uses ifneq(TW_INCLUDE_CRYPTO,), so leave the crypto
+    # variables undefined rather than assigning the string "false".
+    undefine TW_INCLUDE_CRYPTO
+    undefine TW_INCLUDE_CRYPTO_FBE
+    undefine TW_INCLUDE_FBE_METADATA_DECRYPT
+    undefine TW_USE_FSCRYPT_POLICY
+endif
 
 # Hack: prevent anti rollback
 PLATFORM_SECURITY_PATCH := 2099-12-31
@@ -94,12 +116,6 @@ BOOT_SECURITY_PATCH := $(PLATFORM_SECURITY_PATCH)
 PLATFORM_VERSION := 99.87.36
 PLATFORM_VERSION_LAST_STABLE := $(PLATFORM_VERSION)
 
-# Crypto
-TW_INCLUDE_CRYPTO := true
-TW_INCLUDE_CRYPTO_FBE := true
-TW_INCLUDE_FBE_METADATA_DECRYPT := true
-TW_USE_FSCRYPT_POLICY := 1
-
 # Recovery
 TARGET_RECOVERY_PIXEL_FORMAT := "RGBX_8888"
 TARGET_RECOVERY_DEVICE_DIRS += $(DEVICE_PATH)
@@ -107,12 +123,19 @@ TARGET_RECOVERY_FSTAB := $(DEVICE_PATH)/recovery/root/system/etc/recovery.fstab
 
 # TWRP Configuration
 TARGET_USE_CUSTOM_LUN_FILE_PATH := /config/usb_gadget/g1/functions/mass_storage.0/lun.%d/file
-RECOVERY_SDCARD_ON_DATA := true
+ifeq ($(PBRP_ENABLE_CRYPTO),true)
+    RECOVERY_SDCARD_ON_DATA := true
+    TW_PREPARE_DATA_MEDIA_EARLY := true
+else
+    RECOVERY_SDCARD_ON_DATA := false
+    TW_PREPARE_DATA_MEDIA_EARLY := false
+endif
 TW_THEME := portrait_hdpi
 TW_Y_OFFSET := 80
 TW_H_OFFSET := -80
 TW_EXTRA_LANGUAGES := true
-TW_SCREEN_BLANK_ON_BOOT := true
+# Avoid the MTK framebuffer blank/unblank wait during startup.
+TW_SCREEN_BLANK_ON_BOOT := false
 TW_INPUT_BLACKLIST := "hbtp_vm"
 TW_BRIGHTNESS_PATH := "/sys/class/leds/lcd-backlight/brightness"
 TW_MAX_BRIGHTNESS := 2047
@@ -125,7 +148,6 @@ TW_INCLUDE_REPACKTOOLS := true
 TW_EXCLUDE_DEFAULT_USB_INIT := true
 TW_FRAMERATE := 60
 TW_CUSTOM_CPU_TEMP_PATH := /sys/devices/virtual/thermal/thermal_zone4/temp
-TW_PREPARE_DATA_MEDIA_EARLY := true
 
 # Debug flags
 TWRP_INCLUDE_LOGCAT := true

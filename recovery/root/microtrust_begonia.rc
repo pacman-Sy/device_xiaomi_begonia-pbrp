@@ -36,9 +36,13 @@ on boot
     chown system system /sys/bus/platform/devices/utos/unload_ut_drv
     chown system system /sys/bus/platform/devices/utos/notify_ree_dci_handler
 
-#for All mode
-on load_persist_props_action
-    write /proc/bootprof "start teei cfg (on load_persist_props_action)"
+# PBRP can start teei_daemon as soon as hwservicemanager is ready. Create
+# the TEE layout during init, before that trigger. Android init mkdir is not
+# recursive, so create each parent explicitly.
+on init
+    write /proc/bootprof "start teei cfg (on init)"
+    mkdir /data 0755 root root
+    mkdir /data/vendor 0771 root system
     mkdir /data/vendor/thh
     mkdir /data/vendor/thh/system
     mkdir /data/vendor/thh/tee_00

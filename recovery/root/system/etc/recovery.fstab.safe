@@ -1,7 +1,11 @@
 # Safe startup fstab for begonia.
 #
-# The default workflow build does not touch encrypted /data. The crypto build
-# replaces this file with the selected static or dynamic fstab.
+# The MicroTrust metadata-FBE path runs synchronously before the PBRP main UI.
+# This diagnostic image intentionally omits /data and all fscrypt options; it
+# does not wipe or modify user data.
+#
+# Use a static or dynamic fstab with PBRP_ENABLE_CRYPTO=true only after the
+# hardware-backed decryption path has been tested.
 /dev/block/platform/bootdevice/by-name/system    /system               ext4     ro                                                              wait,avb=vbmeta,first_stage_mount,avb_keys=/avb/q-gsi.avbpubkey:/avb/r-gsi.avbpubkey:/avb/s-gsi.avbpubkey
 /dev/block/platform/bootdevice/by-name/vendor    /vendor               ext4     ro                                                              wait,avb,first_stage_mount
 /dev/block/platform/bootdevice/by-name/misc      /misc                 emmc     defaults                                                        defaults

@@ -18,14 +18,24 @@ PRODUCT_PROPERTY_OVERRIDES += \
     ro.bootimage.build.date.utc=0 \
     ro.build.date.utc=0
 
-# Additional target Libraries
-TARGET_RECOVERY_DEVICE_MODULES += \
-    libkeymaster4 \
-    libpuresoftkeymasterdevice
+ifeq ($(PBRP_ENABLE_CRYPTO),true)
+    PRODUCT_PROPERTY_OVERRIDES += ro.pbrp.crypto=true
+else
+    PRODUCT_PROPERTY_OVERRIDES += ro.pbrp.crypto=false
+endif
 
-TW_RECOVERY_ADDITIONAL_RELINK_LIBRARY_FILES += \
-    $(TARGET_OUT_SHARED_LIBRARIES)/libkeymaster4.so \
-    $(TARGET_OUT_SHARED_LIBRARIES)/libpuresoftkeymasterdevice.so
+# The hardware-backed keymaster stack is opt-in. The default safe image must
+# not enter the vendor TEE/FBE path before the main UI is ready.
+ifeq ($(PBRP_ENABLE_CRYPTO),true)
+    TARGET_RECOVERY_DEVICE_MODULES += \
+        libkeymaster4 \
+        libpuresoftkeymasterdevice \
+        libshim_beanpod
 
-PRODUCT_PACKAGES += \
-    libshim_beanpod
+    TW_RECOVERY_ADDITIONAL_RELINK_LIBRARY_FILES += \
+        $(TARGET_OUT_SHARED_LIBRARIES)/libkeymaster4.so \
+        $(TARGET_OUT_SHARED_LIBRARIES)/libpuresoftkeymasterdevice.so
+
+    PRODUCT_PACKAGES += \
+        libshim_beanpod
+endif

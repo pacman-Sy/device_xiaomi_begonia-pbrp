@@ -73,6 +73,7 @@ jobs:
           cat > .repo/local_manifests/begonia-recovery.xml <<'EOF'
           <manifest>
             <remote name="pacman" fetch="https://github.com/pacman-Sy" />
+            <remove-project name="bootable/recovery" />
             <project path="bootable/recovery"
                      name="android_bootable_recovery"
                      remote="pacman"

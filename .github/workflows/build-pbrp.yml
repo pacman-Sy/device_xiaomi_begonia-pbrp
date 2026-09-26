@@ -80,14 +80,7 @@ jobs:
             -u https://github.com/PitchBlackRecoveryProject/manifest_pb.git \
             -b android-12.1
           echo "Syncing upstream PBRP build tree (this can take several minutes)..."
-          sync_pid=""
-          timeout 20m repo sync -c -j4 --no-clone-bundle --no-tags &
-          sync_pid=$!
-          while kill -0 "$sync_pid" 2>/dev/null; do
-            sleep 60
-            echo "repo sync is still running (elapsed time is being watched)"
-          done
-          wait "$sync_pid"
+          timeout 20m repo sync -c -j4 --no-clone-bundle --no-tags
           echo "Upstream PBRP build tree synced."
 
           # Sync the stock manifest first, then replace only the recovery
@@ -117,6 +110,13 @@ jobs:
             "$GITHUB_WORKSPACE/" \
             "$BUILD_ROOT/device/xiaomi/begonia/"
           test -f "$BUILD_ROOT/device/xiaomi/begonia/BoardConfig.mk"
+          # kati does not understand `undefine`; catch it here with a clear
+          # message instead of failing later inside lunch/dumpvars.
+          if grep -nE '^[[:space:]]*undefine[[:space:]]' \
+            "$BUILD_ROOT/device/xiaomi/begonia/"*.mk; then
+            echo "::error::BoardConfig.mk uses 'undefine', which kati cannot parse"
+            exit 1
+          fi
 
       - name: Select recovery fstab
         id: fstab

@@ -101,12 +101,13 @@ ifeq ($(PBRP_ENABLE_CRYPTO),true)
     TW_INCLUDE_FBE_METADATA_DECRYPT := true
     TW_USE_FSCRYPT_POLICY := 1
 else
-    # PBRP's Android.mk uses ifneq(TW_INCLUDE_CRYPTO,), so leave the crypto
-    # variables undefined rather than assigning the string "false".
-    undefine TW_INCLUDE_CRYPTO
-    undefine TW_INCLUDE_CRYPTO_FBE
-    undefine TW_INCLUDE_FBE_METADATA_DECRYPT
-    undefine TW_USE_FSCRYPT_POLICY
+    # PBRP's Android.mk gates crypto with both `ifeq ($(TW_INCLUDE_CRYPTO), true)`
+    # and `ifneq ($(TW_INCLUDE_CRYPTO),)`, so an empty assignment disables it just
+    # like an undefined variable would. `undefine` is not supported by kati.
+    TW_INCLUDE_CRYPTO :=
+    TW_INCLUDE_CRYPTO_FBE :=
+    TW_INCLUDE_FBE_METADATA_DECRYPT :=
+    TW_USE_FSCRYPT_POLICY :=
 endif
 
 # Hack: prevent anti rollback
